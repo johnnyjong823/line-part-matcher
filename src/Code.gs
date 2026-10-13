@@ -39,6 +39,7 @@ function doPost(e) {
   var cfg = getConfig_();
   // Apps Script 讀不到 X-Line-Signature 標頭，改用網址上的 token 驗證來源
   if (cfg.WEBHOOK_TOKEN && (!e.parameter || e.parameter.token !== cfg.WEBHOOK_TOKEN)) {
+    console.warn('Webhook token 不符，已拒絕。請確認 LINE Webhook URL 結尾為 ?token=（WEBHOOK_TOKEN 的值）');
     return ContentService.createTextOutput('forbidden');
   }
   var body = JSON.parse((e.postData && e.postData.contents) || '{}');
