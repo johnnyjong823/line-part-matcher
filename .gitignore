@@ -1,0 +1,6 @@
+# clasp 本機設定與憑證（不可上傳）
+.clasp.json
+.clasprc.json
+node_modules/
+.omc/
+~$*.xlsx

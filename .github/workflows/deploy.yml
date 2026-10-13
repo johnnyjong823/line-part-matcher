@@ -1,0 +1,65 @@
+# 推送到 main → 跑測試 → 測試通過後自動部署到 Google Apps Script（網址不變）
+# 需要的 GitHub Secrets 請見 README「CI/CD 自動部署」
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 比對邏輯測試
+        run: node tests/run.js
+      - name: LINE 流程模擬測試
+        run: node tests/e2e_mock.js
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency: deploy-apps-script
+    env:
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+      DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 檢查 Secrets
+        id: check
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ] || [ -z "$DEPLOYMENT_ID" ]; then
+            echo "::warning::尚未設定 CLASPRC_JSON / SCRIPT_ID / DEPLOYMENT_ID，略過部署"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 設定 clasp
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"src"}' "$SCRIPT_ID" > .clasp.json
+
+      - name: 上傳程式碼（clasp push）
+        if: steps.check.outputs.ready == 'true'
+        run: npx -y @google/clasp@2.4.2 push --force
+
+      - name: 更新網頁應用程式部署（同一個網址）
+        if: steps.check.outputs.ready == 'true'
+        run: npx -y @google/clasp@2.4.2 deploy --deploymentId "$DEPLOYMENT_ID" --description "GitHub ${GITHUB_SHA::7}"
+
+      - name: 清除憑證
+        if: always()
+        run: rm -f ~/.clasprc.json .clasp.json
